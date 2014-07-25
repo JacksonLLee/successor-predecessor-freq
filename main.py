@@ -256,7 +256,7 @@ printTerminalTxt('SF-after SF-before PF-after PF-before SFPF-after SFPF-before\n
 																			sum(PFevaluationList), sum(PFevaluationList)+lenGold,
 																			sum(SFPFevaluationList), sum(SFPFevaluationList)+lenGold), output)
 
-
+ 
 
 ############################################################
 # close open file objects and compile .tex file
