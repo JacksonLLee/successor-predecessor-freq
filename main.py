@@ -4,6 +4,7 @@
 import math
 import string
 import subprocess
+import codecs
 
 def printTerminalTxt(s, f):
 	'''
@@ -18,10 +19,29 @@ def elbowPoint(points):
 	secondDerivativeListPointTuplesSorted = sorted(enumerate(secondDerivativeList), key=lambda x:x[1], reverse=True)
 	return secondDerivativeListPointTuplesSorted[0][0] + 2
 
-def intersection(points1, points2):
+def intersectionBefore(points1, points2):
 	for (idx, (p1, p2)) in enumerate(zip(points1, points2)):
 		if p2 > p1:
-			return idx+1
+			return idx
+
+def intersectionClosest(points1, points2):
+#   points1[idx1] *   * points1[idx2]
+#				  \ /
+#				   *  <--- intersection point
+#				  / \
+#   points2[idx1] *   * points2[idx2]
+	for (idx, (p1, p2)) in enumerate(zip(points1, points2)):
+		if p2 > p1:
+			idx1 = idx - 1
+			idx2 = idx
+
+			diff1 = abs(points1[idx1] - points2[idx1])
+			diff2 = abs(points1[idx2] - points2[idx2])
+
+			if diff1 <= diff2:
+				return idx
+			else:
+				return idx+1
 
 
 #######################################################################
@@ -30,15 +50,17 @@ def intersection(points1, points2):
 
 lexicon = open('pt_br.txt').read().lower().split('\r\n')
 # lexicon = open('Ncorpus.txt').read().lower().split('\n')
-#testwords = open('input.txt').read().lower().split('\n')
-#testwords = [x[:x.index('\t')].replace('\n','').replace('|','') for x in open('goldStandard.txt')]
-#goldStandard = [x[:x.index('\t')].replace('\n','') for x in open('goldStandard.txt')]
 
-#expanded gold standard list
-testwords = [x[:x.index('\t')].replace('\n','').replace('|','') for x in open('goldStandard_MP.txt')]
-goldStandard = [x[:x.index('\t')].replace('\n','') for x in open('goldStandard_MP.txt')]
+goldStandardFilename = 'goldStandard.txt'
+goldStandardFilename = 'goldStandard_MP.txt' # expanded gold standard list
 
-output = open('output.txt', 'w')
+testwords = [x[:x.index('\t')].replace('\n','').replace('|','') for x in open(goldStandardFilename) if (not x.startswith('#'))]
+goldStandard = [x[:x.index('\t')].replace('\n','') for x in open(goldStandardFilename) if not x.startswith('#')]
+
+output = open('output.csv', 'w')
+
+Rscriptname = 'Rplots/generate_plots.R'
+Rscript = open(Rscriptname, 'w')
 
 lexDict = { x.split()[0].lower():int(x.split()[1]) for x in lexicon }
 lexKeys = lexDict.keys()
@@ -60,7 +82,8 @@ outTex.write('\\begin{document}\n')
 
 SFpredictList = list()
 PFpredictList = list()
-SFPFpredictList = list()
+SFPFpredictBeforeList = list()
+SFPFpredictClosestList = list()
 truncPointList = list()
 
 
@@ -106,7 +129,7 @@ for (fullform, gold) in zip(testwords, goldStandard):
 		continue
 
 #	printTerminalTxt('----------' + '\n' + string.lower(fullform), output)
-	outTex.write('%s\n\n%s\n\n\\vspace{1em}\n\n' % (fullform, gold.replace('|','$|$')))
+	outTex.write('{0}\n\n{1}\n\n\\vspace{{1em}}\n\n'.format(fullform, gold.replace('|','$|$')))
 	outTex.write('\\begin{tabular}{l|%s}\n\n' % ('l'*len(fullform)))
 	goldPosition = gold.index('|')
 
@@ -200,23 +223,45 @@ for (fullform, gold) in zip(testwords, goldStandard):
 	outTex.write('trunc point: ' + str(truncPoint) + '\n\n')
 
 	SFpredict = elbowPoint(logcountList)
-	PFpredict = elbowPoint(logcountReversedList)
-	SFPFpredict = intersection(logcountList, logcountReversedList[::-1])
+	PFpredict = elbowPoint(logcountReversedList[::-1])
+	SFPFpredictBefore = intersectionBefore(logcountList, logcountReversedList[::-1])
+	SFPFpredictClosest = intersectionClosest(logcountList, logcountReversedList[::-1])
 
 	SFpredictList.append(SFpredict)
 	PFpredictList.append(PFpredict)
-	SFPFpredictList.append(SFPFpredict)
+	SFPFpredictBeforeList.append(SFPFpredictBefore)
+	SFPFpredictClosestList.append(SFPFpredictClosest)
 
 	outTex.write('SF point: ' + str(SFpredict)+'\n\n')
 	outTex.write('PF point: ' + str(PFpredict)+'\n\n')
 
-	outTex.write('SF+PF point: ' + str(SFPFpredict) + '\n\n')
+	outTex.write('SF+PF-before point: ' + str(SFPFpredictBefore) + '\n\n')
+	outTex.write('SF+PF-closest point: ' + str(SFPFpredictClosest) + '\n\n')
 
 	outTex.write('\\vspace{3em}\n\n')
 
-#	print logcountList
-#	print logcountReversedList
-#	print
+	## write R script ##
+	Rscript.write('postscript(\'Rplots/%s.eps\')\n' % (fullform))
+	Rscript.write('sf <- c(%s)\n' % (','.join([str(x) for x in logcountList])))
+	Rscript.write('pf <- c(%s)\n' % (','.join([str(x) for x in logcountReversedList[::-1]])))
+	Rscript.write('y_range <- range(sf,pf)\n')
+
+	Rscript.write('plot(sf, type="o", pch=21, lty=1, ylim=y_range, axes=FALSE, ann=FALSE)\n')
+	Rscript.write('lines(pf, type="o", pch=22, lty=2)\n')
+
+	Rscript.write('axis(1, at=1:%d, lab=c(%s))\n' % (len(fullform), ','.join(['"'+x+'"' for x in fullform])))
+	Rscript.write('axis(2, las=1)\n')
+
+	Rscript.write('box()\n')
+
+	Rscript.write('title(main="%s")\n' % (gold))
+	Rscript.write('title(ylab="log(freq)")\n')
+
+	Rscript.write('legend(2, y_range[2], c("suc freq","pred freq"), pch=21:22, lty=1:2)\n')
+	Rscript.write('dev.off()\n\n')
+
+
+
 
 ##########################################################
 ### evaluation
@@ -229,34 +274,42 @@ evaluationList = list()
 SFevaluationList = list()
 PFevaluationList = list()
 SFPFevaluationList = list()
+SFPF_closest_evaluationList = list()
 
-printTerminalTxt('{0:15s} {1:10s} {2:10s} {3:10s} {4:10s} {5:12s} {6:12s}'.format('word',
-																				'SF-after', 'SF-before',
-																				'PF-after', 'PF-before',
-																				'SFPF-after', 'SFPF-before'), output)
+output.write('{0},{1},{2},{3},{4},{5}\n'.format('word','truc-pt',
+														'SF',
+														'PF',
+														'SFPF-before', 'SFPF-closest'))
 
-for (gold, T, SF, PF, SFPF) in zip(goldStandard, truncPointList, SFpredictList, PFpredictList, SFPFpredictList):
+for (gold, T, SF, PF, SFPF, SFPF_closest) in zip(goldStandard, truncPointList, SFpredictList, PFpredictList, SFPFpredictBeforeList, SFPFpredictClosestList):
 	SFeval = T-SF
 	PFeval = T-PF
 	SFPFeval = T-SFPF
+	SFPFeval_closest = T - SFPF_closest
 
 	SFevaluationList.append(SFeval)
 	PFevaluationList.append(PFeval)
 	SFPFevaluationList.append(SFPFeval)
+	SFPF_closest_evaluationList.append(SFPFeval_closest)
 
-	printTerminalTxt('{0:15s} {1:10d} {2:10d} {3:10d} {4:10d} {5:12d} {6:12d}'.format(gold,
-																				SFeval, SFeval+1,
-																				PFeval, PFeval+1,
-																				SFPFeval, SFPFeval+1), output)
+	output.write('{0},{1},{2},{3},{4},{5}\n'.format(gold, T,
+														SFeval, 
+														PFeval, 
+														SFPFeval, SFPFeval_closest))
 
 lenGold = len(goldStandard)
 
-printTerminalTxt('evaluation:', output)
-printTerminalTxt('SF-after SF-before PF-after PF-before SFPF-after SFPF-before\n{0} {1} {2} {3} {4} {5}'.format(sum(SFevaluationList), sum(SFevaluationList)+lenGold, 
-																			sum(PFevaluationList), sum(PFevaluationList)+lenGold,
-																			sum(SFPFevaluationList), sum(SFPFevaluationList)+lenGold), output)
+output.write(',sum ->,{0},{1},{2},{3}\n'.format(sum(SFevaluationList), 
+													sum(PFevaluationList),
+													sum(SFPFevaluationList), sum(SFPF_closest_evaluationList)))
 
- 
+def sum_abs(L, plus=0):
+	return sum([abs(x+plus) for x in L])
+
+output.write(',abs. values ->,{0},{1},{2},{3}\n'.format(sum_abs(SFevaluationList), 
+															sum_abs(PFevaluationList), 
+															sum_abs(SFPFevaluationList), sum_abs(SFPF_closest_evaluationList)))
+
 
 ############################################################
 # close open file objects and compile .tex file
@@ -264,6 +317,8 @@ printTerminalTxt('SF-after SF-before PF-after PF-before SFPF-after SFPF-before\n
 outTex.write('\\end{document}\n')
 outTex.close()
 output.close()
+Rscript.close()
 
 subprocess.call(('latex', 'outlatex.tex'))
 subprocess.call(('dvipdf', 'outlatex.dvi'))
+subprocess.call(('Rscript', Rscriptname))
