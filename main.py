@@ -51,11 +51,13 @@ def intersectionClosest(points1, points2):
 lexicon = open('pt_br.txt').read().lower().split('\r\n')
 # lexicon = open('Ncorpus.txt').read().lower().split('\n')
 
-goldStandardFilename = 'goldStandard.txt'
-goldStandardFilename = 'goldStandard_MP.txt' # expanded gold standard list
+#goldStandardFilename = 'goldStandard.txt'
+#goldStandardFilename = 'goldStandard_MP.txt' # expanded gold standard list
+goldStandardFilename = 'goldStandard_MP_bin.txt' # expanded gold standard list, with binary feet marked
 
-testwords = [x[:x.index('\t')].replace('\n','').replace('|','') for x in open(goldStandardFilename) if (not x.startswith('#'))]
-goldStandard = [x[:x.index('\t')].replace('\n','') for x in open(goldStandardFilename) if not x.startswith('#')]
+testwords = [x[:x.index('\t')].replace('\n','').replace('|','').replace('$','') for x in open(goldStandardFilename) if (not x.startswith('#'))]
+goldStandard = [x[:x.index('\t')].replace('\n','').replace('$','') for x in open(goldStandardFilename) if not x.startswith('#')]
+goldStandardBinFoot = [x[:x.index('\t')].replace('\n','').replace('|','') for x in open(goldStandardFilename) if not x.startswith('#')]
 
 output = open('output.csv', 'w')
 
@@ -85,6 +87,7 @@ PFpredictList = list()
 SFPFpredictBeforeList = list()
 SFPFpredictClosestList = list()
 truncPointList = list()
+truncPointBinFootList = list()
 
 
 ###############################################################################
@@ -92,10 +95,12 @@ truncPointList = list()
 ###	checking each time to see how many words in the lexicon can be formed	###
 ### from that truncated form												###
 ###############################################################################
-for (fullform, gold) in zip(testwords, goldStandard):
+for (fullform, gold, goldBinFoot) in zip(testwords, goldStandard, goldStandardBinFoot):
 	print fullform
 	truncPoint = gold.index('|')
+	truncPointBinFoot = goldBinFoot.index('$')
 	truncPointList.append(truncPoint)
+	truncPointBinFootList.append(truncPointBinFoot)
 	fullform = fullform.lower()
 	fullformReversed = fullform[::-1]
 	trunc = ''
@@ -249,15 +254,22 @@ for (fullform, gold) in zip(testwords, goldStandard):
 	Rscript.write('plot(sf, type="o", pch=21, lty=1, ylim=y_range, axes=FALSE, ann=FALSE)\n')
 	Rscript.write('lines(pf, type="o", pch=22, lty=2)\n')
 
-	Rscript.write('axis(1, at=1:%d, lab=c(%s))\n' % (len(fullform), ','.join(['"'+x+'"' for x in fullform])))
+	x_axis_label = ''
+	for i in range(len(fullform)):
+		if i < truncPoint:
+			x_axis_label = x_axis_label + fullform[i].upper()
+		else:
+			x_axis_label = x_axis_label + fullform[i]
+
+	Rscript.write('axis(1, at=1:%d, lab=c(%s))\n' % (len(fullform), ','.join(['"'+x+'"' for x in x_axis_label])))
 	Rscript.write('axis(2, las=1)\n')
 
 	Rscript.write('box()\n')
 
-	Rscript.write('title(main="%s")\n' % (gold))
+	Rscript.write('title(main="%s")\n' % (gold.replace('|','')))
 	Rscript.write('title(ylab="log(freq)")\n')
 
-	Rscript.write('legend(2, y_range[2], c("suc freq","pred freq"), pch=21:22, lty=1:2)\n')
+	Rscript.write('legend(2, y_range[2], c("suc freq (SF)","pred freq (PF)"), pch=21:22, lty=1:2)\n')
 	Rscript.write('dev.off()\n\n')
 
 
@@ -275,40 +287,43 @@ SFevaluationList = list()
 PFevaluationList = list()
 SFPFevaluationList = list()
 SFPF_closest_evaluationList = list()
+BinFootevaluationList = list()
 
-output.write('{0},{1},{2},{3},{4},{5}\n'.format('word','truc-pt',
+output.write('{0},{1},{2},{3},{4},{5},{6}\n'.format('word','truc-pt',
 														'SF',
 														'PF',
-														'SFPF-before', 'SFPF-closest'))
+														'SFPF-before', 'SFPF-closest', 'BinaryFoot'))
 
-for (gold, T, SF, PF, SFPF, SFPF_closest) in zip(goldStandard, truncPointList, SFpredictList, PFpredictList, SFPFpredictBeforeList, SFPFpredictClosestList):
+for (gold, T, SF, PF, SFPF, SFPF_closest, binfoot) in zip(goldStandard, truncPointList, SFpredictList, PFpredictList, SFPFpredictBeforeList, SFPFpredictClosestList, truncPointBinFootList):
 	SFeval = T-SF
 	PFeval = T-PF
 	SFPFeval = T-SFPF
 	SFPFeval_closest = T - SFPF_closest
+	BinFootEval = T - binfoot
 
 	SFevaluationList.append(SFeval)
 	PFevaluationList.append(PFeval)
 	SFPFevaluationList.append(SFPFeval)
 	SFPF_closest_evaluationList.append(SFPFeval_closest)
+	BinFootevaluationList.append(BinFootEval)
 
-	output.write('{0},{1},{2},{3},{4},{5}\n'.format(gold, T,
+	output.write('{0},{1},{2},{3},{4},{5},{6}\n'.format(gold, T,
 														SFeval, 
 														PFeval, 
-														SFPFeval, SFPFeval_closest))
+														SFPFeval, SFPFeval_closest, BinFootEval))
 
 lenGold = len(goldStandard)
 
-output.write(',sum ->,{0},{1},{2},{3}\n'.format(sum(SFevaluationList), 
+output.write(',sum ->,{0},{1},{2},{3},{4}\n'.format(sum(SFevaluationList), 
 													sum(PFevaluationList),
-													sum(SFPFevaluationList), sum(SFPF_closest_evaluationList)))
+													sum(SFPFevaluationList), sum(SFPF_closest_evaluationList), sum(BinFootevaluationList)))
 
 def sum_abs(L, plus=0):
 	return sum([abs(x+plus) for x in L])
 
-output.write(',abs. values ->,{0},{1},{2},{3}\n'.format(sum_abs(SFevaluationList), 
+output.write(',abs. values ->,{0},{1},{2},{3},{4}\n'.format(sum_abs(SFevaluationList), 
 															sum_abs(PFevaluationList), 
-															sum_abs(SFPFevaluationList), sum_abs(SFPF_closest_evaluationList)))
+															sum_abs(SFPFevaluationList), sum_abs(SFPF_closest_evaluationList), sum_abs(BinFootevaluationList)))
 
 
 ############################################################
