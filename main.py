@@ -5,6 +5,9 @@ import math
 import string
 import subprocess
 import codecs
+import sys
+reload(sys)
+sys.setdefaultencoding("utf-8")
 
 def printTerminalTxt(s, f):
 	'''
@@ -48,21 +51,23 @@ def intersectionClosest(points1, points2):
 ###	reads in lexicon, input full forms, and outputs numbers			###
 #######################################################################
 
-lexicon = open('pt_br.txt').read().lower().split('\r\n')
+lexicon = codecs.open('pt_br.txt', encoding='utf-8').read().lower().split('\r\n')
 # lexicon = open('Ncorpus.txt').read().lower().split('\n')
 
 #goldStandardFilename = 'goldStandard.txt'
 #goldStandardFilename = 'goldStandard_MP.txt' # expanded gold standard list
 goldStandardFilename = 'goldStandard_MP_bin.txt' # expanded gold standard list, with binary feet marked
 
-testwords = [x[:x.index('\t')].replace('\n','').replace('|','').replace('$','') for x in open(goldStandardFilename) if (not x.startswith('#'))]
-goldStandard = [x[:x.index('\t')].replace('\n','').replace('$','') for x in open(goldStandardFilename) if not x.startswith('#')]
-goldStandardBinFoot = [x[:x.index('\t')].replace('\n','').replace('|','') for x in open(goldStandardFilename) if not x.startswith('#')]
+dataList = [x[:x.index('\t')].replace('\n','').replace('#','') for x in codecs.open(goldStandardFilename, encoding='utf-8')]
 
-output = open('output.csv', 'w')
+testwords = [x.replace('|','').replace('$','') for x in dataList]
+goldStandard = [x.replace('$','') for x in dataList]
+goldStandardBinFoot = [x.replace('|','') for x in dataList]
+
+output = codecs.open('output.csv', 'w', encoding='utf-8')
 
 Rscriptname = 'Rplots/generate_plots.R'
-Rscript = open(Rscriptname, 'w')
+Rscript = codecs.open(Rscriptname, 'w', encoding='utf-8')
 
 lexDict = { x.split()[0].lower():int(x.split()[1]) for x in lexicon }
 lexKeys = lexDict.keys()
@@ -72,12 +77,13 @@ lexKeys = lexDict.keys()
 ###	initialize LaTeX .tex file	###
 #######################################################################
 
-outTex = open('outlatex.tex', 'w')
+outTex = codecs.open('outlatex.tex', 'w', encoding='utf-8')
 
 outTex.write('\\documentclass{article}\n')
 outTex.write('\\usepackage{booktabs}\n')
 outTex.write('\\usepackage{color}\n')
 outTex.write('\\usepackage[letterpaper, margin=.5in]{geometry}\n')
+outTex.write('\\usepackage{fontspec}\n')
 outTex.write('\\setlength{\\parindent}{0em}\n')
 outTex.write('\\begin{document}\n')
 
@@ -334,6 +340,6 @@ outTex.close()
 output.close()
 Rscript.close()
 
-subprocess.call(('latex', 'outlatex.tex'))
-subprocess.call(('dvipdf', 'outlatex.dvi'))
+subprocess.call(('xelatex', 'outlatex.tex'))
+#subprocess.call(('dvipdf', 'outlatex.dvi'))
 subprocess.call(('Rscript', Rscriptname))
